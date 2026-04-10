@@ -1,0 +1,59 @@
+John Doe
+john.doe@email.com | +1-415-555-0100 | San Francisco, CA
+linkedin.com/in/johndoe | github.com/johndoe
+
+SUMMARY
+Senior Full-Stack Engineer with 6+ years building scalable distributed systems.
+Passionate about clean architecture, ML pipelines, and developer tooling.
+
+EXPERIENCE
+------------------------------------------------------------------
+Senior Software Engineer — Acme Corp (March 2021 – Present)
+- Designed and built a multi-tenant REST API platform using Python and FastAPI
+  serving 2M requests/day
+- Migrated monolithic Django app to microservices deployed on AWS ECS with Docker
+  and Kubernetes; reduced p99 latency by 40%
+- Built a real-time data pipeline using Apache Kafka and Apache Spark
+- Mentored 4 junior engineers; introduced CI/CD pipelines via GitHub Actions
+- Tech: Python, FastAPI, Django, AWS (EC2, S3, Lambda), Docker, Kubernetes,
+  PostgreSQL, Redis, Kafka, Spark, GitHub Actions
+
+Software Engineer — Startup XYZ (June 2018 – February 2021)
+- Developed full-stack features in React (frontend) and Node.js / Express (backend)
+- Built ML model inference service using scikit-learn and PyTorch
+- Implemented real-time dashboards with WebSockets and Redis pub/sub
+- Tech: React, TypeScript, Node.js, Express, PostgreSQL, MongoDB, Redis,
+  scikit-learn, PyTorch, Docker
+
+Junior Developer Intern — DevShop (Jan 2018 – May 2018)
+- Contributed to Vue.js frontend and Flask REST API
+- Wrote unit tests and helped set up Jenkins CI pipeline
+
+EDUCATION
+------------------------------------------------------------------
+B.Tech in Computer Science — IIT Bombay (2018)  GPA: 8.7/10
+
+SKILLS
+------------------------------------------------------------------
+Languages:  Python, JavaScript, TypeScript, Go, SQL
+Frontend:   React, Vue.js, Next.js, TypeScript
+Backend:    FastAPI, Django, Flask, Node.js, Express.js
+Cloud/DevOps: AWS, Docker, Kubernetes, Terraform, GitHub Actions, Jenkins
+Databases:  PostgreSQL, MongoDB, Redis, Elasticsearch
+ML/AI:      PyTorch, TensorFlow, scikit-learn, Hugging Face, LangChain
+Data:       Apache Kafka, Apache Spark, Pandas, NumPy
+
+CERTIFICATIONS
+------------------------------------------------------------------
+AWS Solutions Architect – Associate  (Amazon, 2022)
+Certified Kubernetes Administrator – CKA  (CNCF, 2023)
+
+PROJECTS
+------------------------------------------------------------------
+TalentMatch (github.com/johndoe/talentmatch)
+  Open-source resume parser using Python, spaCy, and sentence-transformers
+  Tech: Python, FastAPI, PostgreSQL, ChromaDB, Docker
+
+MLFlow Dashboard
+  Internal observability dashboard for ML experiments
+  Tech: React, TypeScript, Python, FastAPI, PostgreSQL, Docker
