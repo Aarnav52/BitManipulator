@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     allowed_origins: List[str] = ["http://localhost:3000", "http://localhost:8000"]
 
     # LLM model
-    llm_model: str = "gemini-1.5-flash"
+    llm_model: str = "gemini-2.0-flash"
     llm_max_tokens: int = 4096
 
     # Embedding model

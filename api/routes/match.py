@@ -44,18 +44,22 @@ async def list_candidates(_: str = Depends(verify_api_key)):
         "candidates": [
             {
                 "id":                  c.id,
-                # FIX 1: Name fallback
                 "name":                c.full_name or "Unknown Candidate",
                 "email":               c.email or "N/A",
                 "location":            c.location or "N/A",
-                "total_skills":        len(c.skills),
-                # FIX 2: Numeric fallback to prevent NaN
+                "total_skills":        len(c.skills) if c.skills else 0,
                 "experience_years":    c.total_years_experience or 0.0,
                 "seniority":           c.seniority_level or "Junior",
                 
-                # FIX 3: CRITICAL NaN FIX
-                # We check for 'parsing_confidence'. If it's None or missing, return 0.0
-                "parsing_confidence":  getattr(c, 'parsing_confidence', 0.0) or 0.0,
+                # --- CONFIDENCE FIX START ---
+                # We extract the value once
+                "confidence_value": getattr(c, 'parsing_confidence', 0.0) or 0.0,
+                
+                # We send it under THREE names to ensure the Frontend finds it
+                "parsing_confidence": getattr(c, 'parsing_confidence', 0.0) or 0.0,
+                "confidence":         getattr(c, 'parsing_confidence', 0.0) or 0.0,
+                "score":              getattr(c, 'parsing_confidence', 0.0) or 0.0,
+                # --- CONFIDENCE FIX END ---
                 
                 "parsed_at":           c.parsed_at.isoformat() if c.parsed_at else None,
             }
