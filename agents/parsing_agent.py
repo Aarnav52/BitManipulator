@@ -22,6 +22,35 @@ from models.resume import (
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+# ── Constants ──────────────────────────────────────────────────────────────────
+
+SKIP_HEADERS = {
+    "resume", "curriculum vitae", "cv", "profile", "summary",
+    "objective", "contact", "about me", "about", "personal details",
+    "personal information", "biodata", "bio-data", "candidate",
+    "applicant", "name", "unknown candidate", "ai parsing failed",
+    "professional summary", "career objective", "professional profile",
+    "introduction", "overview", "bio",
+    # Confidential / staffing headers
+    "confidential", "confidential talent profile", "talent profile",
+    "executive profile", "staffing director", "operations lead",
+    # Section labels
+    "core technical skills", "technical skills", "skills", "languages",
+    "work experience", "experience", "education", "certifications",
+    "projects", "references", "management", "soft skills",
+    "management & soft skills", "core competencies", "competencies",
+    "achievements", "awards", "publications", "interests",
+    "hobbies", "volunteer",
+}
+
+# Words that indicate a job title line, not a name
+TITLE_KEYWORDS = {
+    "director", "manager", "lead", "engineer", "developer", "analyst",
+    "consultant", "executive", "officer", "president", "vp", "head",
+    "specialist", "coordinator", "architect", "designer", "staffing",
+    "operations", "technical", "senior", "junior", "principal", "staff",
+}
+
 # ── Prompt ─────────────────────────────────────────────────────────────────────
 
 EXTRACTION_SYSTEM_PROMPT = """You are an expert resume parser. Extract structured information into JSON.
@@ -87,6 +116,11 @@ Rules:
 - Estimate total_years_experience from work history
 - Use null for missing numeric fields, empty string for missing text
 - proficiency values: beginner | familiar | intermediate | advanced | expert | null
+- For full_name: extract the CANDIDATE'S actual human name only.
+  IGNORE section labels like "Resume", "CV", "Curriculum Vitae", "Profile", "Summary", "Objective", "Contact", "About Me".
+  A real name is typically 2-4 words near the top of the document, written in Title Case, containing ONLY letters (no digits, no special characters, no punctuation).
+  Examples of valid names: "John Smith", "Priya Sharma", "Carlos de la Vega".
+  If you cannot confidently identify a real person's name, return empty string "".
 - Return ONLY the JSON, nothing else"""
 
 EXTRACTION_USER_PROMPT = "Parse this resume:\n\n{raw_text}"
@@ -96,10 +130,8 @@ EXTRACTION_USER_PROMPT = "Parse this resume:\n\n{raw_text}"
 
 def _clean_llm_json(raw: str) -> str:
     raw = raw.strip()
-    # Strip markdown fences if present
     raw = re.sub(r'^```(?:json)?\s*', '', raw)
     raw = re.sub(r'\s*```$', '', raw)
-    # Extract only the JSON object
     start = raw.find('{')
     end = raw.rfind('}')
     if start != -1 and end != -1:
@@ -126,6 +158,110 @@ def _estimate_confidence(structured: dict) -> float:
     return round(min(score, 1.0), 2)
 
 
+# ── Name Extractor ─────────────────────────────────────────────────────────────
+
+def _normalize_name_line(line: str) -> str:
+    """
+    Strip smart/curly quotes, asterisks, and other decoration from a line,
+    then collapse whitespace. Keeps hyphens and apostrophes inside words.
+    e.g. 'JONATHAN "JON" PRITCHARD'  →  'JONATHAN JON PRITCHARD'
+         '*** CONFIDENTIAL ***'       →  'CONFIDENTIAL'
+    """
+    # Remove smart quotes, curly quotes, regular quotes
+    line = re.sub(r'[\u201c\u201d\u2018\u2019"\']', '', line)
+    # Remove decorative characters: asterisks, stars, pipes, dashes used as borders
+    line = re.sub(r'[*|►▪•]', '', line)
+    # Collapse whitespace
+    line = re.sub(r'\s+', ' ', line).strip()
+    return line
+
+
+def _extract_name_from_text(text: str) -> str:
+    """
+    Heuristic name extractor. Scans the first 40 lines, skips headers/titles,
+    and returns the first line that looks like a real person's name.
+    Handles: Title Case, ALL CAPS, initials, nicknames in quotes,
+             hyphenated names, smart quotes.
+    """
+    lines = text.splitlines()[:40]
+    print(f"🔍 Scanning {len(lines)} lines for name...")
+
+    for i, raw_line in enumerate(lines):
+        line = _normalize_name_line(raw_line.strip())
+
+        # Skip blank or too short/long after normalization
+        if not line or len(line) < 3 or len(line) > 70:
+            continue
+
+        # Skip known section headers
+        normalized = line.lower().strip(".:/-– \t")
+        if normalized in SKIP_HEADERS:
+            print(f"   Line {i}: '{line}' → skipped (known header)")
+            continue
+
+        # Skip lines that contain any title keyword — these are job title lines
+        # e.g. "EXECUTIVE STAFFING DIRECTOR & OPERATIONS LEAD"
+        words_lower = set(normalized.split())
+        if words_lower & TITLE_KEYWORDS:
+            print(f"   Line {i}: '{line}' → skipped (job title keywords)")
+            continue
+
+        # Skip lines with email / URLs
+        if re.search(r'[@]', line):
+            continue
+        if re.search(r'(https?://|www\.)', line, re.I):
+            continue
+
+        # Skip lines with 3+ consecutive digits (phone, zip, date)
+        if re.search(r'\d{3,}', line):
+            continue
+
+        # Skip lines with non-name special characters
+        if re.search(r'[|•►▪✓\[\]<>{}#$%^&*_+=~`&]', line):
+            continue
+
+        # Skip address lines: "City, ST" or "City, Country"
+        if re.search(r',\s*[A-Z][a-zA-Z]{1,}', line) and ',' in line:
+            continue
+
+        # Skip purely lowercase lines
+        if line.islower():
+            continue
+
+        words = line.split()
+
+        # Names are 2–5 words
+        if not (2 <= len(words) <= 5):
+            continue
+
+        # Normalize ALL-CAPS to Title Case for validation
+        display = line
+        if line.isupper():
+            display = line.title()
+            words = display.split()
+
+        def is_name_word(w: str) -> bool:
+            # Initials: "R.", "R.K."
+            if re.match(r'^[A-Z](\.[A-Z])*\.?$', w):
+                return True
+            # Single capital letter initial (no dot)
+            if re.match(r'^[A-Z]$', w):
+                return True
+            # Regular name word: capital start, letters/hyphens/apostrophes
+            if re.match(r"^[A-Z][a-zA-Z\-']{1,}$", w):
+                return True
+            return False
+
+        if all(is_name_word(w) for w in words):
+            print(f"   ✅ Name found at line {i}: '{display}'")
+            return display
+
+        print(f"   Line {i}: '{line}' → no word match (words={words})")
+
+    print("   ❌ No name found via heuristics")
+    return ""
+
+
 # ── LLM Call ───────────────────────────────────────────────────────────────────
 
 def structure_with_llm(raw_text: str) -> Tuple[dict, List[str]]:
@@ -145,12 +281,11 @@ def structure_with_llm(raw_text: str) -> Tuple[dict, List[str]]:
         warnings.append("Resume truncated to 6000 words")
 
     try:
-        # ✅ Correct usage of google-genai >= 1.0.0
         client = genai.Client(api_key=api_key)
 
         print("🚀 Sending to Gemini...")
         response = client.models.generate_content(
-            model=settings.llm_model,  # set "gemini-2.0-flash" in config.py
+            model=settings.llm_model,
             contents=EXTRACTION_USER_PROMPT.format(raw_text=raw_text),
             config=types.GenerateContentConfig(
                 system_instruction=EXTRACTION_SYSTEM_PROMPT,
@@ -164,7 +299,26 @@ def structure_with_llm(raw_text: str) -> Tuple[dict, List[str]]:
 
         cleaned = _clean_llm_json(response.text)
         data = json.loads(cleaned)
-        print(f"✅ AI parsed successfully. Found {len(data.get('skills', []))} skills.")
+
+        # ── Post-process: validate and fix the extracted name ──────────────────
+        extracted_name = data.get("full_name", "").strip()
+        print(f"🧠 Gemini returned full_name: '{extracted_name}'")
+
+        name_is_bad = (
+            not extracted_name
+            or extracted_name.lower().strip(".:/-– ") in SKIP_HEADERS
+            or len(extracted_name.split()) < 2
+            or re.search(r'[\d@]', extracted_name)
+        )
+
+        if name_is_bad:
+            print(f"⚠️ Name failed validation, switching to heuristic extraction...")
+            warnings.append(f"LLM name '{extracted_name}' failed validation, using heuristic extraction")
+            heuristic_name = _extract_name_from_text(raw_text)
+            print(f"   Heuristic result: '{heuristic_name}'")
+            data["full_name"] = heuristic_name or "Unknown Candidate"
+
+        print(f"✅ Final name: '{data['full_name']}' | Skills: {len(data.get('skills', []))}")
         return data, warnings
 
     except json.JSONDecodeError as e:
@@ -186,13 +340,8 @@ def _regex_fallback(text: str) -> dict:
     linkedin_match = re.search(r'linkedin\.com/in/[\w\-]+', text, re.I)
     github_match = re.search(r'github\.com/[\w\-]+', text, re.I)
 
-    # Try to get name from first non-email, non-URL line
-    name = ""
-    for line in text.splitlines():
-        line = line.strip()
-        if line and not re.search(r'[@./]', line) and 2 < len(line) < 60:
-            name = line
-            break
+    # Use the robust heuristic extractor instead of blind first-line grab
+    name = _extract_name_from_text(text)
 
     # Try to extract skills section
     skills_raw = []
@@ -312,7 +461,6 @@ def build_parsed_resume(structured, source_format, source_filename, raw_text, wa
                 technologies=p.get("technologies") or [],
             ))
 
-    # Confidence calculated from data — never from LLM
     confidence = _estimate_confidence(structured)
 
     return ParsedResume(
@@ -333,7 +481,7 @@ def build_parsed_resume(structured, source_format, source_filename, raw_text, wa
         source_format=source_format,
         source_filename=source_filename,
         raw_text_length=len(raw_text),
-        parsing_confidence=float(confidence),  # ✅ matches models/resume.py field name
+        parsing_confidence=float(confidence),
         parse_warnings=warnings,
         parsed_at=datetime.utcnow(),
     )
@@ -348,25 +496,20 @@ def _validate_file(file_bytes: bytes, filename: str) -> Tuple[bool, str]:
     """
     ext = Path(filename).suffix.lower()
 
-    # Check magic bytes for PDF
     if ext == ".pdf":
         if not file_bytes[:4] == b"%PDF":
             return False, "File has .pdf extension but is not a real PDF."
         return True, ""
 
-    # Check magic bytes for DOCX (all .docx/.docm are ZIP files starting with PK)
     if ext in (".docx", ".doc"):
         if not file_bytes[:2] == b"PK":
             return False, "File has .docx extension but is not a valid Word document."
 
-        # Check it contains word/document.xml — the actual content file
         import zipfile
         try:
             with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
                 names = z.namelist()
-                # A real DOCX must have word/document.xml
                 if "word/document.xml" not in names:
-                    # List what it actually contains to give a helpful error
                     content_hint = ", ".join(names[:5])
                     return False, (
                         f"This is not a resume DOCX — it appears to be an Office theme or template file. "
@@ -387,14 +530,13 @@ def _extract_docx_text(file_bytes: bytes) -> Tuple[str, List[str]]:
     """
     warnings: List[str] = []
 
-    # Strategy 1: python-docx (best for normal DOCX)
+    # Strategy 1: python-docx
     try:
         doc = DocxDocument(io.BytesIO(file_bytes))
         parts = []
         for para in doc.paragraphs:
             if para.text.strip():
                 parts.append(para.text)
-        # Also extract text from tables
         for table in doc.tables:
             for row in table.rows:
                 row_text = " | ".join(cell.text.strip() for cell in row.cells if cell.text.strip())
@@ -407,7 +549,7 @@ def _extract_docx_text(file_bytes: bytes) -> Tuple[str, List[str]]:
     except Exception as e:
         warnings.append(f"python-docx failed: {e}, trying XML fallback")
 
-    # Strategy 2: Raw XML extraction from the ZIP
+    # Strategy 2: Raw XML extraction
     try:
         import zipfile
         from xml.etree import ElementTree as ET
@@ -415,8 +557,11 @@ def _extract_docx_text(file_bytes: bytes) -> Tuple[str, List[str]]:
             with z.open("word/document.xml") as f:
                 tree = ET.parse(f)
                 root = tree.getroot()
-                ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
-                texts = [node.text for node in root.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t") if node.text]
+                texts = [
+                    node.text
+                    for node in root.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t")
+                    if node.text
+                ]
                 text = " ".join(texts)
                 if len(text.strip()) > 50:
                     return text, warnings
@@ -455,12 +600,10 @@ class ParsingAgent:
         raw_text = ""
         try:
             if fmt == FileFormat.PDF:
-                # Try pdfplumber first
                 with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
                     pages = [p.extract_text() or "" for p in pdf.pages]
                     raw_text = "\n\n".join(pages)
 
-                # Fallback to PyMuPDF if sparse
                 if len(raw_text.strip()) < 100:
                     warnings.append("pdfplumber returned sparse text, trying PyMuPDF")
                     doc = fitz.open(stream=file_bytes, filetype="pdf")
