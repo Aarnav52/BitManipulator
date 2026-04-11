@@ -51,15 +51,7 @@ async def list_candidates(_: str = Depends(verify_api_key)):
                 "experience_years":    c.total_years_experience or 0.0,
                 "seniority":           c.seniority_level or "Junior",
                 
-                # --- CONFIDENCE FIX START ---
-                # We extract the value once
-                "confidence_value": getattr(c, 'parsing_confidence', 0.0) or 0.0,
-                
-                # We send it under THREE names to ensure the Frontend finds it
-                "parsing_confidence": getattr(c, 'parsing_confidence', 0.0) or 0.0,
-                "confidence":         getattr(c, 'parsing_confidence', 0.0) or 0.0,
-                "score":              getattr(c, 'parsing_confidence', 0.0) or 0.0,
-                # --- CONFIDENCE FIX END ---
+                "parse_confidence":    c.parsing_confidence or 0.0,
                 
                 "parsed_at":           c.parsed_at.isoformat() if c.parsed_at else None,
             }

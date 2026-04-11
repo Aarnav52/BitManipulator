@@ -333,7 +333,7 @@ def build_parsed_resume(structured, source_format, source_filename, raw_text, wa
         source_format=source_format,
         source_filename=source_filename,
         raw_text_length=len(raw_text),
-        parse_confidence=float(confidence),  # ✅ matches models/resume.py field name
+        parsing_confidence=float(confidence),  # ✅ matches models/resume.py field name
         parse_warnings=warnings,
         parsed_at=datetime.utcnow(),
     )

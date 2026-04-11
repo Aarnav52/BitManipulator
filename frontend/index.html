@@ -822,7 +822,7 @@ async function parseResume(){
     const fd=new FormData(); fd.append('file',_selectedFile);
     const data=await apiFetch('/api/v1/parse',{method:'POST',body:fd});
     renderCandidateProfile(data,'parseResult');
-    showAlert('uploadAlert','success',`✓ Parsed successfully — confidence ${Math.round((data.parse_confidence||data.confidence_score||0)*100)}%`);
+    showAlert('uploadAlert','success',`✓ Parsed successfully — confidence ${Math.round((data.parsing_confidence||data.confidence_score||0)*100)}%`);
     updateCandidateDropdown(data);
   } catch(e){ showAlert('uploadAlert','error','Parse failed: '+e.message); }
   finally { setLoading('parseLoading',false); }
@@ -839,7 +839,7 @@ async function parseText(){
     const data=await apiFetch('/api/v1/parse/text',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({text, filename:document.getElementById('textFilename').value||'resume.txt'})});
     renderCandidateProfile(data,'textParseResult');
-    showAlert('textParseAlert','success',`✓ Parsed — confidence ${Math.round((data.parse_confidence||data.confidence_score||0)*100)}%`);
+    showAlert('textParseAlert','success',`✓ Parsed — confidence ${Math.round((data.parsing_confidence||data.confidence_score||0)*100)}%`);
     updateCandidateDropdown(data);
   } catch(e){ showAlert('textParseAlert','error','Parse failed: '+e.message); }
   finally { setLoading('textParseLoading',false); }
@@ -1064,7 +1064,7 @@ function renderCandidateProfile(d, containerId, containerEl){
   const byCat={};
   (d.skills||[]).forEach(s=>{const c=s.category||'Other';byCat[c]=byCat[c]||[];byCat[c].push(s);});
   const init=((d.full_name||'?').split(' ').map(w=>w[0]).join('').slice(0,2)||'?').toUpperCase();
-  const conf=Math.round((d.parse_confidence||d.confidence_score||0)*100);
+  const conf=Math.round((d.parsing_confidence||d.confidence_score||0)*100);
   const confColor=conf>=75?'var(--green)':conf>=50?'var(--amber)':'var(--red)';
 
   const catColors={'Programming Languages':'#2563eb','Web Frameworks':'#7c3aed','AI/ML':'#059669',
